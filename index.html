@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>極簡記帳本</title>
+    <title>極簡記帳本 - 邱老師專用版</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -55,15 +55,20 @@
         .account-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f4f1ee; }
         .total-row { font-weight: 500; color: #8b7d6b; font-size: 1.2em; margin-top: 15px; }
 
+        /* 歷史紀錄列表 */
         .record-item {
             background: white; padding: 15px; margin-bottom: 12px; border-radius: 4px;
             display: flex; justify-content: space-between; align-items: center;
         }
 
-        .record-info small { color: #999; display: block; font-size: 0.8em; }
+        .editable-text { cursor: pointer; border-bottom: 1px dashed #ccc; padding: 2px 4px; }
+        .editable-text:hover { background-color: #fff9f0; }
+        .edit-input { width: 80px !important; padding: 4px !important; margin: 0 !important; font-size: 0.9em !important; }
+
+        .record-info small { color: #999; display: block; font-size: 0.8em; margin-top: 4px; }
         .amt-expense { color: var(--muji-red); font-weight: 500; }
         .amt-income { color: var(--muji-green); font-weight: 500; }
-        .btn-delete { width: auto; background: #e0e0e0; color: #777; padding: 4px 10px; font-size: 0.8em; border: none; }
+        .btn-delete { width: auto; background: #e0e0e0; color: #777; padding: 4px 10px; font-size: 0.8em; border: none; margin-left: 10px;}
 
         .btn-outline {
             background-color: transparent; color: var(--muji-beige);
@@ -78,8 +83,8 @@
 
     <div class="form-group">
         <h3>新增紀錄</h3>
+        <input type="number" id="itemAmount" placeholder="金額 (必填)">
         <input type="text" id="itemName" placeholder="項目名稱 (如：午餐、發薪水)">
-        <input type="number" id="itemAmount" placeholder="金額">
         <select id="accountSelect">
             <option value="cash">現金</option>
             <option value="post_dajia">大甲郵局</option>
@@ -106,13 +111,13 @@
     </div>
 
     <div id="recordList">
-        <h3>歷史紀錄</h3>
+        <h3>歷史紀錄 (點擊文字可編輯)</h3>
     </div>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, deleteDoc, doc, setDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyCFF83AmxfOgiwFI6Mfee9ZZKkVwcfNiCo",
@@ -126,8 +131,6 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-
-    // 您的最新 GAS 部署網址
     const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxAm7P2ZBo4-LWgkGN-aSxnXb5rd8SQAcGZCPKd20ATzXYcuKXAJRX2oQNqtfFEfBVf/exec"; 
 
     const accountNames = {
@@ -158,8 +161,6 @@
                 });
                 renderUI(currentBalances, transactions);
             });
-        }, (err) => {
-            alert("讀取失敗！請確認 Firebase 規則日期是否已更新。\n錯誤：" + err.message);
         });
     }
 
@@ -183,34 +184,63 @@
         editInputsDiv.innerHTML = editHtml;
 
         const listDiv = document.getElementById('recordList');
-        let listHtml = '<h3>歷史紀錄</h3>';
+        let listHtml = '<h3>歷史紀錄 (點擊文字可編輯)</h3>';
         transactions.forEach(t => {
             const dateStr = t.timestamp?.toDate ? t.timestamp.toDate().toLocaleString('zh-TW', { hour12: false }) : new Date(t.timestamp).toLocaleString();
             const isIncome = t.type === 'income';
             listHtml += `
                 <div class="record-item">
                     <div class="record-info">
-                        <strong>${t.item}</strong> <span style="color:#999; font-size:0.8em;">(${accountNames[t.account]})</span>
-                        <small>${dateStr}</small>
+                        <strong class="editable-text" onclick="editInline('${t.id}', 'item', '${t.item}')">${t.item}</strong> 
+                        <span style="color:#999; font-size:0.8em;">(${accountNames[t.account]})</span>
+                        <small class="editable-text" onclick="editInline('${t.id}', 'time', '${dateStr}')">${dateStr}</small>
                     </div>
                     <div style="display:flex; align-items:center;">
-                        <span class="${isIncome ? 'amt-income' : 'amt-expense'}">${isIncome ? '+' : '-'}$${parseFloat(t.amount).toLocaleString()}</span>
-                        <button class="btn-delete" style="margin-left:10px;" onclick="deleteRecord('${t.id}')">刪除</button>
+                        <span class="${isIncome ? 'amt-income' : 'amt-expense'} editable-text" onclick="editInline('${t.id}', 'amount', '${t.amount}')">
+                            ${isIncome ? '+' : '-'}$${parseFloat(t.amount).toLocaleString()}
+                        </span>
+                        <button class="btn-delete" onclick="deleteRecord('${t.id}')">刪除</button>
                     </div>
                 </div>`;
         });
         listDiv.innerHTML = listHtml;
     }
 
+    // 歷史紀錄編輯函式
+    window.editInline = async (id, field, currentVal) => {
+        let newVal;
+        if (field === 'amount') {
+            newVal = prompt("請輸入新金額：", currentVal);
+            if (newVal !== null && !isNaN(newVal)) {
+                await updateDoc(doc(db, "transactions", id), { amount: parseFloat(newVal) });
+            }
+        } else if (field === 'item') {
+            newVal = prompt("請輸入新項目名稱：", currentVal);
+            if (newVal !== null) {
+                await updateDoc(doc(db, "transactions", id), { item: newVal });
+            }
+        } else if (field === 'time') {
+            newVal = prompt("請輸入新時間 (格式: YYYY/MM/DD HH:mm:ss)：", currentVal);
+            if (newVal !== null) {
+                const dateObj = new Date(newVal);
+                if (!isNaN(dateObj)) {
+                    await updateDoc(doc(db, "transactions", id), { timestamp: dateObj });
+                } else {
+                    alert("日期格式不正確");
+                }
+            }
+        }
+    };
+
     window.addRecord = async (type) => {
         const itemInput = document.getElementById('itemName');
         const amountInput = document.getElementById('itemAmount');
         const accountKey = document.getElementById('accountSelect').value;
         
-        if (!itemInput.value || !amountInput.value) return alert("請完整填寫項目與金額");
+        if (!amountInput.value) return alert("請輸入金額");
 
         const record = {
-            item: itemInput.value,
+            item: itemInput.value || "未命名項目",
             amount: parseFloat(amountInput.value),
             account: accountNames[accountKey], 
             type: type,
@@ -218,16 +248,12 @@
         };
 
         try {
-            // 1. 同步到 Google 試算表 (先跑同步)
             syncToGoogleSheet(record);
-            
-            // 2. 存入 Firebase
             await addDoc(collection(db, "transactions"), { ...record, account: accountKey, timestamp: new Date() });
-            
             itemInput.value = '';
             amountInput.value = '';
         } catch (e) { 
-            alert("Firebase 儲存失敗！請確認規則日期已更新至 2026/1/27 之後。\n錯誤：" + e.message); 
+            alert("儲存失敗，請檢查 Firebase 規則。"); 
         }
     };
 
@@ -237,25 +263,21 @@
             mode: 'no-cors',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
-        }).catch(err => console.error("GAS 同步失敗:", err));
+        });
     }
 
-    window.saveInitialBalances = async () => {
-        const updated = {};
+    window.saveInitialBalances = async (updated) => {
+        const newInit = {};
         for (let key in accountNames) { 
-            updated[key] = parseFloat(document.getElementById(`init_${key}`).value) || 0; 
+            newInit[key] = parseFloat(document.getElementById(`init_${key}`).value) || 0; 
         }
-        try {
-            await setDoc(doc(db, "settings", "balances"), updated);
-            alert("起始金額更新成功");
-            togglePanel('editInitialPanel');
-        } catch (e) { alert("儲存失敗: " + e.message); }
+        await setDoc(doc(db, "settings", "balances"), newInit);
+        alert("起始金額更新成功");
+        togglePanel('editInitialPanel');
     };
 
     window.deleteRecord = async (id) => {
-        if (confirm("確定刪除此筆紀錄？\n(注意：試算表內容需手動刪除)")) {
-            await deleteDoc(doc(db, "transactions", id));
-        }
+        if (confirm("確定刪除？")) await deleteDoc(doc(db, "transactions", id));
     };
 
     initApp();
