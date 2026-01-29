@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>極簡記帳本</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --muji-bg: #f4f1ee;
+            --muji-stone: #e0dbd5;
+            --muji-charcoal: #333333;
+            --muji-beige: #a69685;
+            --muji-white: #ffffff;
+            --muji-red: #b22222;
+            --muji-green: #5b8c5a;
+        }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: var(--muji-bg);
+            color: var(--muji-charcoal);
+            margin: 0; padding: 20px;
+            display: flex; flex-direction: column; align-items: center;
+        }
+
+        .container { max-width: 600px; width: 100%; }
+        h2 { font-weight: 500; text-align: center; color: var(--muji-beige); margin-bottom: 25px; }
+
+        .form-group {
+            background: var(--muji-stone);
+            padding: 20px; border-radius: 8px; margin-bottom: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        h3 { font-size: 1.1em; margin-top: 0; color: #555; border-bottom: 1px solid #c4bdb6; padding-bottom: 8px; }
+
+        input, select, button {
+            width: 100%; padding: 12px; margin: 8px 0;
+            border: 1px solid #d1ccc8; border-radius: 4px;
+            box-sizing: border-box; font-family: inherit; font-size: 1rem;
+        }
+
+        .btn-container { display: flex; gap: 10px; }
+        .btn-expense { background-color: var(--muji-beige); color: white; border: none; }
+        .btn-income { background-color: var(--muji-green); color: white; border: none; }
+        button:hover { opacity: 0.85; cursor: pointer; }
+
+        .card-panel {
+            background: var(--muji-white); padding: 20px; border-radius: 8px;
+            margin-top: 10px; display: none; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+        }
+
+        .account-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f4f1ee; }
+        .total-row { font-weight: 500; color: #8b7d6b; font-size: 1.2em; margin-top: 15px; }
+
+        .record-item {
+            background: white; padding: 15px; margin-bottom: 12px; border-radius: 4px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .record-info small { color: #999; display: block; font-size: 0.8em; }
+        .amt-expense { color: var(--muji-red); font-weight: 500; }
+        .amt-income { color: var(--muji-green); font-weight: 500; }
+        .btn-delete { width: auto; background: #e0e0e0; color: #777; padding: 4px 10px; font-size: 0.8em; border: none; }
+
+        .btn-outline {
+            background-color: transparent; color: var(--muji-beige);
+            border: 1px solid var(--muji-beige); margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>極簡記帳本</h2>
+
+    <div class="form-group">
+        <h3>新增紀錄</h3>
+        <input type="text" id="itemName" placeholder="項目名稱 (如：午餐、發薪水)">
+        <input type="number" id="itemAmount" placeholder="金額">
+        <select id="accountSelect">
+            <option value="cash">現金</option>
+            <option value="post_dajia">大甲郵局</option>
+            <option value="post_houhu">後湖郵局</option>
+            <option value="bank_cathay">國泰銀行</option>
+            <option value="bank_fubon">富邦銀行</option>
+        </select>
+        <div class="btn-container">
+            <button class="btn-expense" onclick="addRecord('expense')">儲存支出</button>
+            <button class="btn-income" onclick="addRecord('income')">儲存收入</button>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 25px;">
+        <button class="btn-outline" onclick="togglePanel('assetSummary')">顯示資產統計</button>
+        <div class="card-panel" id="assetSummary"></div>
+
+        <button class="btn-outline" onclick="togglePanel('editInitialPanel')">設定帳戶起始金額</button>
+        <div class="card-panel" id="editInitialPanel">
+            <h3>編輯起始金額</h3>
+            <div id="editInputs"></div>
+            <button class="btn-expense" onclick="saveInitialBalances()" style="margin-top:10px;">儲存新起始額度</button>
+        </div>
+    </div>
+
+    <div id="recordList">
+        <h3>歷史紀錄</h3>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, deleteDoc, doc, setDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCFF83AmxfOgiwFI6Mfee9ZZKkVwcfNiCo",
+        authDomain: "money-d8bce.firebaseapp.com",
+        projectId: "money-d8bce",
+        storageBucket: "money-d8bce.firebasestorage.app",
+        messagingSenderId: "1082145858520",
+        appId: "1:1082145858520:web:b3867ece1d1f5ff0b8c8ad",
+        measurementId: "G-BPQ9QF8930"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // 您的最新 GAS 部署網址
+    const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxAm7P2ZBo4-LWgkGN-aSxnXb5rd8SQAcGZCPKd20ATzXYcuKXAJRX2oQNqtfFEfBVf/exec"; 
+
+    const accountNames = {
+        cash: "現金", post_dajia: "大甲郵局", post_houhu: "後湖郵局", bank_cathay: "國泰銀行", bank_fubon: "富邦銀行"
+    };
+
+    let globalInitialBalances = { cash:0, post_dajia:0, post_houhu:0, bank_cathay:0, bank_fubon:0 };
+
+    window.togglePanel = (id) => {
+        const panel = document.getElementById(id);
+        panel.style.display = (panel.style.display === 'block') ? 'none' : 'block';
+    };
+
+    function initApp() {
+        onSnapshot(doc(db, "settings", "balances"), (docSnap) => {
+            if (docSnap.exists()) globalInitialBalances = docSnap.data();
+            onSnapshot(query(collection(db, "transactions"), orderBy("timestamp", "desc")), (querySnapshot) => {
+                let transactions = [];
+                let currentBalances = { ...globalInitialBalances };
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    transactions.push({ id: doc.id, ...data });
+                    if (data.type === 'income') {
+                        currentBalances[data.account] += parseFloat(data.amount);
+                    } else {
+                        currentBalances[data.account] -= parseFloat(data.amount);
+                    }
+                });
+                renderUI(currentBalances, transactions);
+            });
+        }, (err) => {
+            alert("讀取失敗！請確認 Firebase 規則日期是否已更新。\n錯誤：" + err.message);
+        });
+    }
+
+    function renderUI(balances, transactions) {
+        const summaryDiv = document.getElementById('assetSummary');
+        let total = 0;
+        let summaryHtml = '<h3>當前資產概況</h3>';
+        for (let key in accountNames) {
+            const amt = balances[key] || 0;
+            summaryHtml += `<div class="account-row"><span>${accountNames[key]}</span><span>$${amt.toLocaleString()}</span></div>`;
+            total += amt;
+        }
+        summaryHtml += `<div class="account-row total-row"><span>總資產淨值</span><span>$${total.toLocaleString()}</span></div>`;
+        summaryDiv.innerHTML = summaryHtml;
+
+        const editInputsDiv = document.getElementById('editInputs');
+        let editHtml = '';
+        for (let key in accountNames) {
+            editHtml += `<div style="display:flex; align-items:center; margin-bottom:5px;"><label style="width:100px;">${accountNames[key]}</label><input type="number" id="init_${key}" value="${globalInitialBalances[key] || 0}" style="margin:0;"></div>`;
+        }
+        editInputsDiv.innerHTML = editHtml;
+
+        const listDiv = document.getElementById('recordList');
+        let listHtml = '<h3>歷史紀錄</h3>';
+        transactions.forEach(t => {
+            const dateStr = t.timestamp?.toDate ? t.timestamp.toDate().toLocaleString('zh-TW', { hour12: false }) : new Date(t.timestamp).toLocaleString();
+            const isIncome = t.type === 'income';
+            listHtml += `
+                <div class="record-item">
+                    <div class="record-info">
+                        <strong>${t.item}</strong> <span style="color:#999; font-size:0.8em;">(${accountNames[t.account]})</span>
+                        <small>${dateStr}</small>
+                    </div>
+                    <div style="display:flex; align-items:center;">
+                        <span class="${isIncome ? 'amt-income' : 'amt-expense'}">${isIncome ? '+' : '-'}$${parseFloat(t.amount).toLocaleString()}</span>
+                        <button class="btn-delete" style="margin-left:10px;" onclick="deleteRecord('${t.id}')">刪除</button>
+                    </div>
+                </div>`;
+        });
+        listDiv.innerHTML = listHtml;
+    }
+
+    window.addRecord = async (type) => {
+        const itemInput = document.getElementById('itemName');
+        const amountInput = document.getElementById('itemAmount');
+        const accountKey = document.getElementById('accountSelect').value;
+        
+        if (!itemInput.value || !amountInput.value) return alert("請完整填寫項目與金額");
+
+        const record = {
+            item: itemInput.value,
+            amount: parseFloat(amountInput.value),
+            account: accountNames[accountKey], 
+            type: type,
+            timestamp: new Date().toISOString()
+        };
+
+        try {
+            // 1. 同步到 Google 試算表 (先跑同步)
+            syncToGoogleSheet(record);
+            
+            // 2. 存入 Firebase
+            await addDoc(collection(db, "transactions"), { ...record, account: accountKey, timestamp: new Date() });
+            
+            itemInput.value = '';
+            amountInput.value = '';
+        } catch (e) { 
+            alert("Firebase 儲存失敗！請確認規則日期已更新至 2026/1/27 之後。\n錯誤：" + e.message); 
+        }
+    };
+
+    async function syncToGoogleSheet(data) {
+        fetch(WEBHOOK_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).catch(err => console.error("GAS 同步失敗:", err));
+    }
+
+    window.saveInitialBalances = async () => {
+        const updated = {};
+        for (let key in accountNames) { 
+            updated[key] = parseFloat(document.getElementById(`init_${key}`).value) || 0; 
+        }
+        try {
+            await setDoc(doc(db, "settings", "balances"), updated);
+            alert("起始金額更新成功");
+            togglePanel('editInitialPanel');
+        } catch (e) { alert("儲存失敗: " + e.message); }
+    };
+
+    window.deleteRecord = async (id) => {
+        if (confirm("確定刪除此筆紀錄？\n(注意：試算表內容需手動刪除)")) {
+            await deleteDoc(doc(db, "transactions", id));
+        }
+    };
+
+    initApp();
+</script>
+</body>
+</html>
