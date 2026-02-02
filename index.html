@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>極簡記帳本 - 邱老師專用版</title>
+    <title>極簡記帳本 - 邱老師專業版</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -44,6 +44,7 @@
         .btn-container { display: flex; gap: 10px; }
         .btn-expense { background-color: var(--muji-beige); color: white; border: none; }
         .btn-income { background-color: var(--muji-green); color: white; border: none; }
+        .btn-save-snapshot { background-color: #8b7d6b; color: white; border: none; margin-top: 10px; }
         button:hover { opacity: 0.85; cursor: pointer; }
 
         .card-panel {
@@ -52,37 +53,51 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.03);
         }
 
-        .account-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f4f1ee; }
-        .total-row { font-weight: 500; color: #8b7d6b; font-size: 1.2em; margin-top: 15px; }
+        .account-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f4f1ee; }
+        .total-row { font-weight: 500; color: #8b7d6b; font-size: 1.2em; margin-top: 15px; border-bottom: 2px solid var(--muji-stone); }
+
+        .snapshot-details { font-size: 0.85em; color: #666; background: #f9f9f9; padding: 10px; margin-top: 10px; border-radius: 4px; display: none; }
+        .snapshot-detail-row { display: flex; justify-content: space-between; padding: 2px 0; }
 
         .record-item {
             background: white; padding: 15px; margin-bottom: 12px; border-radius: 4px;
-            display: flex; justify-content: space-between; align-items: center;
+            display: flex; flex-direction: column; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
         }
 
-        .editable-text { cursor: pointer; border-bottom: 1px dashed #ccc; padding: 2px 4px; transition: 0.2s; }
-        .editable-text:hover { background-color: #fff9f0; color: var(--muji-beige); }
-
+        .record-main { display: flex; justify-content: space-between; align-items: center; width: 100%; }
         .record-info small { color: #999; display: block; font-size: 0.8em; margin-top: 4px; }
-        .amt-expense { color: var(--muji-red); font-weight: 500; }
-        .amt-income { color: var(--muji-green); font-weight: 500; }
-        .btn-delete { width: auto; background: #e0e0e0; color: #777; padding: 4px 10px; font-size: 0.8em; border: none; margin-left: 10px;}
+        
+        /* 編輯樣式 */
+        .editable { cursor: pointer; border-bottom: 1px dashed #ccc; padding: 0 2px; }
+        .editable:hover { background-color: #fff9f0; }
 
-        .btn-outline {
-            background-color: transparent; color: var(--muji-beige);
-            border: 1px solid var(--muji-beige); margin-bottom: 8px;
+        .btn-delete { width: auto; background: #e0e0e0; color: #777; padding: 4px 10px; font-size: 0.8em; border: none; margin-left: 10px;}
+        .btn-detail-toggle { width: auto; background: none; border: 1px solid var(--muji-stone); color: #888; padding: 2px 8px; font-size: 0.75em; margin-top: 5px; }
+        .btn-outline { background-color: transparent; color: var(--muji-beige); border: 1px solid var(--muji-beige); margin-bottom: 8px; }
+
+        #toast {
+            visibility: hidden; min-width: 200px; background-color: #333; color: #fff;
+            text-align: center; border-radius: 4px; padding: 12px;
+            position: fixed; z-index: 1000; left: 50%; bottom: 30px;
+            transform: translateX(-50%); font-size: 14px;
         }
+        #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+        @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
     </style>
 </head>
 <body>
+
+<div id="toast">儲存成功</div>
 
 <div class="container">
     <h2>極簡記帳本</h2>
 
     <div class="form-group">
-        <h3>新增紀錄</h3>
+        <h3>新增收支</h3>
         <input type="number" id="itemAmount" placeholder="金額 (必填)">
-        <input type="text" id="itemName" placeholder="項目名稱 (如：午餐、發薪水)">
+        <input type="text" id="itemName" placeholder="項目名稱">
         <select id="accountSelect">
             <option value="cash">現金</option>
             <option value="post_dajia">大甲郵局</option>
@@ -98,24 +113,32 @@
 
     <div style="margin-bottom: 25px;">
         <button class="btn-outline" onclick="togglePanel('assetSummary')">顯示資產統計</button>
-        <div class="card-panel" id="assetSummary"></div>
+        <div class="card-panel" id="assetSummary">
+            <div id="summaryContent"></div>
+            <button class="btn-save-snapshot" onclick="saveSnapshot()">儲存當前結餘快照</button>
+        </div>
+
+        <button class="btn-outline" onclick="togglePanel('historySnapshotPanel')">檢視歷史資產紀錄</button>
+        <div class="card-panel" id="historySnapshotPanel">
+            <h3>歷史結餘快照</h3>
+            <div id="snapshotList">讀取中...</div>
+        </div>
 
         <button class="btn-outline" onclick="togglePanel('editInitialPanel')">設定帳戶起始金額</button>
         <div class="card-panel" id="editInitialPanel">
-            <h3>編輯起始金額</h3>
             <div id="editInputs"></div>
             <button class="btn-expense" onclick="saveInitialBalances()" style="margin-top:10px;">儲存新起始額度</button>
         </div>
     </div>
 
     <div id="recordList">
-        <h3>歷史紀錄 (點擊文字可編輯)</h3>
+        <h3>歷史收支 (點擊文字可編輯)</h3>
     </div>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, query, orderBy, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyCFF83AmxfOgiwFI6Mfee9ZZKkVwcfNiCo",
@@ -136,6 +159,14 @@
     };
 
     let globalInitialBalances = { cash:0, post_dajia:0, post_houhu:0, bank_cathay:0, bank_fubon:0 };
+    let lastCalculatedBalances = {};
+    let lastTotalNet = 0;
+
+    function showToast(msg) {
+        const x = document.getElementById("toast");
+        x.innerHTML = msg; x.className = "show";
+        setTimeout(() => { x.className = x.className.replace("show", ""); }, 3000);
+    }
 
     window.togglePanel = (id) => {
         const panel = document.getElementById(id);
@@ -151,19 +182,21 @@
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
                     transactions.push({ id: doc.id, ...data });
-                    if (data.type === 'income') {
-                        currentBalances[data.account] += parseFloat(data.amount);
-                    } else {
-                        currentBalances[data.account] -= parseFloat(data.amount);
-                    }
+                    if (data.type === 'income') currentBalances[data.account] += parseFloat(data.amount);
+                    else currentBalances[data.account] -= parseFloat(data.amount);
                 });
+                lastCalculatedBalances = currentBalances;
                 renderUI(currentBalances, transactions);
             });
+        });
+
+        onSnapshot(query(collection(db, "daily_snapshots"), orderBy("timestamp", "desc")), (querySnapshot) => {
+            renderSnapshotUI(querySnapshot);
         });
     }
 
     function renderUI(balances, transactions) {
-        const summaryDiv = document.getElementById('assetSummary');
+        const summaryDiv = document.getElementById('summaryContent');
         let total = 0;
         let summaryHtml = '<h3>當前資產概況</h3>';
         for (let key in accountNames) {
@@ -173,88 +206,116 @@
         }
         summaryHtml += `<div class="account-row total-row"><span>總資產淨值</span><span>$${total.toLocaleString()}</span></div>`;
         summaryDiv.innerHTML = summaryHtml;
+        lastTotalNet = total;
 
         const editInputsDiv = document.getElementById('editInputs');
-        let editHtml = '';
+        let editHtml = '<h3>編輯初始金額</h3>';
         for (let key in accountNames) {
             editHtml += `<div style="display:flex; align-items:center; margin-bottom:5px;"><label style="width:100px;">${accountNames[key]}</label><input type="number" id="init_${key}" value="${globalInitialBalances[key] || 0}" style="margin:0;"></div>`;
         }
         editInputsDiv.innerHTML = editHtml;
 
         const listDiv = document.getElementById('recordList');
-        let listHtml = '<h3>歷史紀錄 (點擊文字可編輯)</h3>';
+        let listHtml = '<h3>歷史收支 (點擊文字可編輯)</h3>';
         transactions.forEach(t => {
             const dateStr = t.timestamp?.toDate ? t.timestamp.toDate().toLocaleString('zh-TW', { hour12: false }) : new Date(t.timestamp).toLocaleString();
-            const isIncome = t.type === 'income';
             listHtml += `
                 <div class="record-item">
-                    <div class="record-info">
-                        <strong class="editable-text" onclick="editInline('${t.id}', 'item', '${t.item}')">${t.item}</strong> 
-                        <span class="editable-text" style="color:#999; font-size:0.85em;" onclick="editAccount('${t.id}', '${t.account}')">(${accountNames[t.account]})</span>
-                        <small class="editable-text" onclick="editInline('${t.id}', 'time', '${dateStr}')">${dateStr}</small>
-                    </div>
-                    <div style="display:flex; align-items:center;">
-                        <span class="${isIncome ? 'amt-income' : 'amt-expense'} editable-text" onclick="editInline('${t.id}', 'amount', '${t.amount}')">
-                            ${isIncome ? '+' : '-'}$${parseFloat(t.amount).toLocaleString()}
-                        </span>
-                        <button class="btn-delete" onclick="deleteRecord('${t.id}')">刪除</button>
+                    <div class="record-main">
+                        <div class="record-info">
+                            <strong class="editable" onclick="editTransaction('${t.id}', 'item', '${t.item}')">${t.item}</strong> 
+                            <span class="editable" onclick="editTransactionAccount('${t.id}', '${t.account}')">(${accountNames[t.account]})</span>
+                            <small>${dateStr}</small>
+                        </div>
+                        <div>
+                            <span class="${t.type === 'income' ? 'amt-income' : 'amt-expense'} editable" onclick="editTransaction('${t.id}', 'amount', '${t.amount}')">
+                                ${t.type === 'income' ? '+' : '-'}$${parseFloat(t.amount).toLocaleString()}
+                            </span>
+                            <button class="btn-delete" onclick="deleteRecord('transactions', '${t.id}')">刪除</button>
+                        </div>
                     </div>
                 </div>`;
         });
         listDiv.innerHTML = listHtml;
     }
 
-    // 帳戶編輯函式
-    window.editAccount = async (id, currentKey) => {
-        let menu = "請選擇新的帳戶來源：\n";
-        const keys = Object.keys(accountNames);
-        keys.forEach((k, index) => { menu += `${index + 1}. ${accountNames[k]}\n`; });
-        
-        let choice = prompt(menu, "");
-        if (choice && choice >= 1 && choice <= keys.length) {
-            const newKey = keys[choice - 1];
-            await updateDoc(doc(db, "transactions", id), { account: newKey });
+    // 編輯項目或金額
+    window.editTransaction = async (id, field, currentVal) => {
+        const label = field === 'item' ? '項目名稱' : '金額';
+        const newVal = prompt(`修改${label}：`, currentVal);
+        if (newVal !== null && newVal !== "") {
+            const updateData = {};
+            updateData[field] = field === 'amount' ? parseFloat(newVal) : newVal;
+            await updateDoc(doc(db, "transactions", id), updateData);
+            showToast("✅ 已更新");
         }
     };
 
-    window.editInline = async (id, field, currentVal) => {
-        let newVal;
-        if (field === 'amount') {
-            newVal = prompt("修改金額：", currentVal);
-            if (newVal !== null && !isNaN(newVal)) await updateDoc(doc(db, "transactions", id), { amount: parseFloat(newVal) });
-        } else if (field === 'item') {
-            newVal = prompt("修改項目名稱：", currentVal);
-            if (newVal !== null) await updateDoc(doc(db, "transactions", id), { item: newVal });
-        } else if (field === 'time') {
-            newVal = prompt("修改時間 (格式: YYYY/MM/DD HH:mm:ss)：", currentVal);
-            if (newVal !== null) {
-                const dateObj = new Date(newVal);
-                if (!isNaN(dateObj)) await updateDoc(doc(db, "transactions", id), { timestamp: dateObj });
-                else alert("日期格式錯誤");
-            }
+    // 編輯帳戶來源
+    window.editTransactionAccount = async (id, currentKey) => {
+        let menu = "請選擇帳戶：\n";
+        const keys = Object.keys(accountNames);
+        keys.forEach((k, index) => { menu += `${index + 1}. ${accountNames[k]}\n`; });
+        let choice = prompt(menu, "");
+        if (choice && choice >= 1 && choice <= keys.length) {
+            await updateDoc(doc(db, "transactions", id), { account: keys[choice - 1] });
+            showToast("✅ 帳戶已更改");
         }
+    };
+
+    function renderSnapshotUI(querySnapshot) {
+        const listDiv = document.getElementById('snapshotList');
+        let html = '';
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            const dateStr = data.timestamp?.toDate ? data.timestamp.toDate().toLocaleString('zh-TW', { hour12: false }) : "無日期";
+            let detailHtml = `<div class="snapshot-details" id="details-${doc.id}">`;
+            for (let key in accountNames) {
+                const val = data.balances ? data.balances[key] : 0;
+                detailHtml += `<div class="snapshot-detail-row"><span>${accountNames[key]}</span><span>$${val.toLocaleString()}</span></div>`;
+            }
+            detailHtml += '</div>';
+            html += `
+                <div class="record-item" style="border-left: 4px solid var(--muji-stone);">
+                    <div class="record-main">
+                        <div class="record-info">
+                            <strong>總資產: $${data.total.toLocaleString()}</strong>
+                            <small>${dateStr}</small>
+                            <button class="btn-detail-toggle" onclick="toggleDetails('${doc.id}')">顯示/隱藏明細</button>
+                        </div>
+                        <button class="btn-delete" onclick="deleteRecord('daily_snapshots', '${doc.id}')">刪除</button>
+                    </div>
+                    ${detailHtml}
+                </div>`;
+        });
+        listDiv.innerHTML = html || "尚無快照紀錄";
+    }
+
+    window.toggleDetails = (id) => {
+        const el = document.getElementById(`details-${id}`);
+        el.style.display = (el.style.display === 'block') ? 'none' : 'block';
+    };
+
+    window.saveSnapshot = async () => {
+        const snapshot = { balances: { ...lastCalculatedBalances }, total: lastTotalNet, timestamp: new Date() };
+        try {
+            await addDoc(collection(db, "daily_snapshots"), snapshot);
+            showToast("✅ 資產結餘快照已儲存");
+        } catch (e) { showToast("❌ 儲存失敗"); }
     };
 
     window.addRecord = async (type) => {
         const itemInput = document.getElementById('itemName');
         const amountInput = document.getElementById('itemAmount');
         const accountKey = document.getElementById('accountSelect').value;
-        if (!amountInput.value) return alert("請輸入金額");
-
-        const record = {
-            item: itemInput.value || "未命名項目",
-            amount: parseFloat(amountInput.value),
-            account: accountNames[accountKey], 
-            type: type,
-            timestamp: new Date().toISOString()
-        };
-
+        if (!amountInput.value) return showToast("請輸入金額");
+        const record = { item: itemInput.value || "未命名", amount: parseFloat(amountInput.value), account: accountKey, type: type, timestamp: new Date() };
         try {
-            syncToGoogleSheet(record);
-            await addDoc(collection(db, "transactions"), { ...record, account: accountKey, timestamp: new Date() });
-            itemInput.value = '';
-            amountInput.value = '';
-        } catch (e) { alert("儲存失敗"); }
+            await addDoc(collection(db, "transactions"), record);
+            syncToGoogleSheet({...record, account: accountNames[accountKey]});
+            itemInput.value = ''; amountInput.value = '';
+            showToast("✅ 已紀錄收支");
+        } catch (e) { showToast("❌ 儲存失敗"); }
     };
 
     async function syncToGoogleSheet(data) {
@@ -265,12 +326,11 @@
         const newInit = {};
         for (let key in accountNames) { newInit[key] = parseFloat(document.getElementById(`init_${key}`).value) || 0; }
         await setDoc(doc(db, "settings", "balances"), newInit);
-        alert("更新成功");
-        togglePanel('editInitialPanel');
-    };
+        showToast("✅ 初始金額已更新");
+    }
 
-    window.deleteRecord = async (id) => {
-        if (confirm("確定刪除？")) await deleteDoc(doc(db, "transactions", id));
+    window.deleteRecord = async (coll, id) => {
+        if (confirm("確定刪除？")) await deleteDoc(doc(db, coll, id));
     };
 
     initApp();
